@@ -330,6 +330,11 @@ mcp__sciverse__semantic_search(
 
 #### 2.3 结构化 Meta-Search（search_papers 路线）
 
+> ⚠️ **关键约束：`query` 与 `sort_by_year` 互斥**
+> Sciverse 后端不允许 BM25 全文检索（`query` 参数）与显式年份排序同时使用。
+> **规则：只要传了 `query`，`sort_by_year` 必须设为 `"none"`，否则返回 `INVALID_REQUEST`。**
+> 若需要按年排序，删除 `query` 参数，改用 `filters_advanced` 做内容过滤（如 `title CONTAINS`）。
+
 使用 `filters_advanced` 覆盖下列 6 类精确检索，每类都能发现语义检索遗漏的文献：
 
 **① 高引用量奠基性文献（landmark papers）**
@@ -351,7 +356,7 @@ mcp__sciverse__search_papers(
 mcp__sciverse__search_papers(
   query="<核心英文关键词>",
   year_from=2018,
-  sort_by_year="desc",
+  sort_by_year="none",          # 不按年排序，让 BM25 相关性主导（query + sort_by_year="desc" 会触发 INVALID_REQUEST）
   filters_advanced=[
     {"field": "fwci", "operator": "FILTER_OP_GTE", "value": 2.0},
     {"field": "influential_citation_count", "operator": "FILTER_OP_GTE", "value": 1}
@@ -365,7 +370,7 @@ mcp__sciverse__search_papers(
 mcp__sciverse__search_papers(
   query="<核心关键词（可中英文）>",
   year_from=2018,
-  sort_by_year="desc",
+  sort_by_year="none",          # 不按年排序，让 BM25 相关性主导
   filters_advanced=[
     {"field": "language", "operator": "FILTER_OP_IN", "value": ["zh", "chinese"]}
   ],
@@ -379,7 +384,7 @@ mcp__sciverse__search_papers(
 mcp__sciverse__search_papers(
   query="<核心英文关键词>",
   year_from=2019,
-  sort_by_year="desc",
+  sort_by_year="none",          # 不按年排序，让 BM25 相关性主导
   filters_advanced=[
     {"field": "publication_published_country", "operator": "FILTER_OP_CONTAINS", "value": "China"},
     {"field": "language", "operator": "FILTER_OP_EQ", "value": "en"}
@@ -393,7 +398,7 @@ mcp__sciverse__search_papers(
 mcp__sciverse__search_papers(
   query="<核心关键词>",
   year_from=<current_year - 2>,
-  sort_by_year="desc",
+  sort_by_year="none",          # 不按年排序，让 BM25 相关性主导
   filters_advanced=[
     {"field": "citation_count", "operator": "FILTER_OP_GTE", "value": 3}
   ],
@@ -406,7 +411,7 @@ mcp__sciverse__search_papers(
 mcp__sciverse__search_papers(
   query="<核心英文关键词>",
   year_from=2020,
-  sort_by_year="desc",
+  sort_by_year="none",          # 不按年排序，让 BM25 相关性主导
   filters_advanced=[
     {"field": "access_is_oa", "operator": "FILTER_OP_EQ", "value": "true"},
     {"field": "citation_count", "operator": "FILTER_OP_GTE", "value": 20}
@@ -544,6 +549,15 @@ FWCI（fwci）：
 **OA 优先策略：**
 - 优先选取 `access_is_oa = "true"` 的文献进行全文读取（可获取完整正文）
 - 非 OA 文献通过 `read_content` 尝试读取（可能仅有摘要/已收录内容）
+
+**doc_id 格式与全文可读性：**
+- **哈希格式 doc_id**（如 `c5568f8a703c...`）：来自 `semantic_search` 返回，Sciverse 已建立全文索引，`read_content` 成功率高 → **优先精读**
+- **DOI 格式 doc_id**（如 `paper:10.1007/s10639-024-12949-9`）：来自 `search_papers` 返回，全文爬取覆盖率不完整，`read_content` 可能返回 502 → **降低优先级**
+- 精读候选列表中，哈希格式 doc_id 排在 DOI 格式 doc_id 之前
+
+**`retrieve_content_failed`（502）快速跳过规则：**
+- `read_content` 返回 502 → **立即标记该文献为"仅摘要"，不重试**，继续处理下一篇
+- 仅摘要文献的处理见 4.4 精读卡片顶部注释要求：写作时不引用任何具体数字
 
 #### 4.3 全文读取策略
 
@@ -1370,7 +1384,7 @@ mcp__sciverse__search_papers(
 mcp__sciverse__search_papers(
   query="LLM hallucination mitigation",
   year_from=2020,
-  sort_by_year="desc",
+  sort_by_year="none",          # query + sort_by_year!="none" → INVALID_REQUEST
   filters_advanced=[
     {"field": "fwci", "operator": "FILTER_OP_GTE", "value": 2.0},
     {"field": "influential_citation_count", "operator": "FILTER_OP_GTE", "value": 1}
@@ -1382,7 +1396,7 @@ mcp__sciverse__search_papers(
 mcp__sciverse__search_papers(
   query="大语言模型幻觉",
   year_from=2020,
-  sort_by_year="desc",
+  sort_by_year="none",          # query + sort_by_year!="none" → INVALID_REQUEST
   filters_advanced=[
     {"field": "language", "operator": "FILTER_OP_IN", "value": ["zh", "chinese"]}
   ],
@@ -1393,7 +1407,7 @@ mcp__sciverse__search_papers(
 mcp__sciverse__search_papers(
   query="hallucination large language model",
   year_from=2021,
-  sort_by_year="desc",
+  sort_by_year="none",          # query + sort_by_year!="none" → INVALID_REQUEST
   filters_advanced=[
     {"field": "publication_published_country", "operator": "FILTER_OP_CONTAINS", "value": "China"},
     {"field": "language", "operator": "FILTER_OP_EQ", "value": "en"}
@@ -1405,7 +1419,7 @@ mcp__sciverse__search_papers(
 mcp__sciverse__search_papers(
   query="hallucination LLM 2024 2025",
   year_from=2023,
-  sort_by_year="desc",
+  sort_by_year="none",          # query + sort_by_year!="none" → INVALID_REQUEST
   filters_advanced=[
     {"field": "citation_count", "operator": "FILTER_OP_GTE", "value": 3}
   ],
@@ -1416,7 +1430,7 @@ mcp__sciverse__search_papers(
 mcp__sciverse__search_papers(
   query="hallucination detection mitigation benchmark",
   year_from=2020,
-  sort_by_year="desc",
+  sort_by_year="none",          # query + sort_by_year!="none" → INVALID_REQUEST
   filters_advanced=[
     {"field": "access_is_oa", "operator": "FILTER_OP_EQ", "value": "true"},
     {"field": "citation_count", "operator": "FILTER_OP_GTE", "value": 20}
